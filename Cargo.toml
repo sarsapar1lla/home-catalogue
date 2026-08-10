@@ -1,0 +1,9 @@
+[package]
+name = "home-catalogue"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bon = "3.9.3"
+jiff = "0.2.35"
+uuid = { version = "1.24.0", features = ["v4"] }
