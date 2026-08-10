@@ -1,0 +1,26 @@
+INSERT INTO books
+(
+    id,
+    title,
+    author,
+    isbn,
+    originally_published,
+    edition,
+    edition_published,
+    status,
+    created,
+    updated
+)
+VALUES
+(
+    ?1,
+    ?2,
+    ?3,
+    ?4,
+    ?5,
+    ?6,
+    ?7,
+    ?8,
+    ?9,
+    ?10
+)

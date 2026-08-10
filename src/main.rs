@@ -3,6 +3,7 @@ use uuid::Uuid;
 
 use crate::model::{Book, Status};
 
+mod catalogue;
 mod model;
 
 fn main() {

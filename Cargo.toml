@@ -6,4 +6,5 @@ edition = "2024"
 [dependencies]
 bon = "3.9.3"
 jiff = "0.2.35"
+rusqlite = { version = "0.40.2", features = ["bundled", "jiff", "uuid"] }
 uuid = { version = "1.24.0", features = ["v4"] }
