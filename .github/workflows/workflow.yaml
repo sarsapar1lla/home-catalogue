@@ -17,9 +17,9 @@ jobs:
         run: cargo install cross
 
       - name: Cross compile with cargo-cross
-        run: cross build --target aarch64-unknown-linux-gnu
+        run: cross build --target armv7-unknown-linux-gnueabihf
 
       - uses: actions/upload-artifact@v4
         with:
           name: homecat
-          path: ./target/aarch64-unknown-linux-gnu/debug/home-catalogue
+          path: ./target/armv7-unknown-linux-gnueabihf/debug/home-catalogue
