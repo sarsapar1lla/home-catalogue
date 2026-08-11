@@ -34,7 +34,7 @@ impl Searchable for Cache {
                 .expect("Can lock mutex")
                 .iter()
                 .filter(|book| book.isbn().is_some_and(|it| it == isbn))
-                .map(|book| book.clone())
+                .cloned()
                 .collect()),
             Search::Title(title) => Ok(self
                 .cache
@@ -42,7 +42,7 @@ impl Searchable for Cache {
                 .expect("Can lock mutex")
                 .iter()
                 .filter(|book| book.title() == title)
-                .map(|book| book.clone())
+                .cloned()
                 .collect()),
             Search::Author(author) => Ok(self
                 .cache
@@ -50,7 +50,7 @@ impl Searchable for Cache {
                 .expect("Can lock mutex")
                 .iter()
                 .filter(|book| book.author() == author)
-                .map(|book| book.clone())
+                .cloned()
                 .collect()),
         }
     }
