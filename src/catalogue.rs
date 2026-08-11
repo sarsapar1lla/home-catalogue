@@ -1,3 +1,5 @@
+use std::{str::FromStr, sync::Mutex};
+
 use uuid::Uuid;
 
 use crate::model::{Book, Status};
@@ -8,73 +10,162 @@ pub enum Search {
     Author(String),
 }
 
-pub trait Catalogue {
-    fn add(&self, book: Book) -> Result<Uuid, &'static str>;
-    fn update(&self, id: Uuid, status: Status) -> Result<(), &'static str>;
+pub trait Searchable {
     fn search(&self, search: Search) -> Result<Vec<Book>, &'static str>;
 }
 
+pub trait Catalogue {
+    fn add(&self, book: Book) -> Result<(), &'static str>;
+    fn update(&self, book: Book) -> Result<(), &'static str>;
+    fn list(&self) -> Result<Vec<Book>, &'static str>;
+}
+
+pub struct Cache {
+    cache: Mutex<Vec<Book>>,
+    delegate: Box<dyn Catalogue>,
+}
+
+impl Searchable for Cache {
+    fn search(&self, search: Search) -> Result<Vec<Book>, &'static str> {
+        match search {
+            Search::Isbn(isbn) => Ok(self
+                .cache
+                .lock()
+                .expect("Can lock mutex")
+                .iter()
+                .filter(|book| book.isbn().is_some_and(|it| it == isbn))
+                .map(|book| book.clone())
+                .collect()),
+            Search::Title(title) => Ok(self
+                .cache
+                .lock()
+                .expect("Can lock mutex")
+                .iter()
+                .filter(|book| book.title() == title)
+                .map(|book| book.clone())
+                .collect()),
+            Search::Author(author) => Ok(self
+                .cache
+                .lock()
+                .expect("Can lock mutex")
+                .iter()
+                .filter(|book| book.author() == author)
+                .map(|book| book.clone())
+                .collect()),
+        }
+    }
+}
+
+impl Catalogue for Cache {
+    fn add(&self, book: Book) -> Result<(), &'static str> {
+        self.delegate.add(book)?;
+        self.refresh()
+    }
+
+    fn update(&self, book: Book) -> Result<(), &'static str> {
+        self.delegate.update(book)?;
+        self.refresh()
+    }
+
+    fn list(&self) -> Result<Vec<Book>, &'static str> {
+        self.delegate.list()
+    }
+}
+
+impl Cache {
+    pub fn new(delegate: Box<dyn Catalogue>) -> Self {
+        let cache = delegate.list().expect("Catalogue available");
+        Self {
+            cache: Mutex::new(cache),
+            delegate,
+        }
+    }
+
+    fn refresh(&self) -> Result<(), &'static str> {
+        let mut books = self.delegate.list()?;
+        let mut cache = self.cache.lock().expect("Can lock mutex");
+        std::mem::swap(&mut *cache, &mut books);
+        Ok(())
+    }
+}
+
 pub struct DatabaseCatalogue {
-    conn: rusqlite::Connection,
+    connection: rusqlite::Connection,
 }
 
 impl Catalogue for DatabaseCatalogue {
-    fn add(&self, book: Book) -> Result<Uuid, &'static str> {
-        self.conn
+    fn add(&self, book: Book) -> Result<(), &'static str> {
+        self.connection
             .execute(
                 include_str!("./sql/add.sql"),
-                rusqlite::params![
-                    book.id(),
-                    book.title(),
-                    book.author(),
-                    book.isbn(),
-                    book.originally_published(),
-                    book.edition(),
-                    book.edition_published(),
-                    book.status(),
-                    book.created(),
-                    book.updated(),
-                ],
+                rusqlite::named_params! {
+                    ":id": book.id(),
+                    ":title": book.title(),
+                    ":author": book.author(),
+                    ":isbn": book.isbn(),
+                    ":originally_published": book.originally_published(),
+                    ":edition": book.edition(),
+                    ":edition_published": book.edition_published(),
+                    ":status": book.status(),
+                    ":created": book.created(),
+                    ":updated": book.updated(),
+                },
             )
             .unwrap();
 
-        Ok(book.id().to_owned())
+        Ok(())
     }
 
-    fn update(&self, id: Uuid, status: Status) -> Result<(), &'static str> {
-        todo!()
+    fn update(&self, book: Book) -> Result<(), &'static str> {
+        self.connection
+            .execute(
+                include_str!("./sql/update.sql"),
+                rusqlite::named_params! {
+                    ":id": book.id().to_string(),
+                    ":title": book.title(),
+                    ":author": book.author(),
+                    ":isbn": book.isbn(),
+                    ":originally_published": book.originally_published(),
+                    ":edition": book.edition(),
+                    ":edition_published": book.edition_published(),
+                    ":status": book.status(),
+                    ":updated": book.updated(),
+                },
+            )
+            .unwrap();
+
+        Ok(())
     }
 
-    fn search(&self, search: Search) -> Result<Vec<Book>, &'static str> {
-        let (query, param) = match search {
-            Search::Isbn(isbn) => ("SELECT * FROM books WHERE isbn = '?1'", isbn),
-            Search::Title(title) => ("SELECT * FROM books WHERE title = '?1'", title),
-            _ => todo!(),
-        };
-        let mut statement = self.conn.prepare(query).unwrap();
+    fn list(&self) -> Result<Vec<Book>, &'static str> {
+        let mut statement = self.connection.prepare("SELECT * FROM books").unwrap();
         statement
-            .query_map([param], |row| Ok(self.book_from(row)))
+            .query_map([], |row| self.book_from(row))
             .unwrap()
-            .into_iter()
-            .map(|row| row.map_err(|err| "Error!"))
+            .map(|row| row.map_err(|_| "Failed to contruct Book from row data"))
             .collect()
     }
 }
 
 impl DatabaseCatalogue {
-    fn book_from(&self, row: &rusqlite::Row) -> Book {
-        Book::builder()
-            .id(row.get_unwrap(0))
-            .title(row.get_unwrap(1))
-            .author(row.get_unwrap(2))
-            .maybe_isbn(row.get_unwrap(3))
-            .maybe_originally_published(row.get_unwrap(4))
-            .maybe_edition(row.get_unwrap(5))
-            .maybe_edition_published(row.get_unwrap(6))
-            .status(row.get_unwrap(7))
-            .created(row.get_unwrap(8))
-            .updated(row.get_unwrap(9))
-            .build()
+    pub fn new(connection: rusqlite::Connection) -> Self {
+        Self { connection }
+    }
+
+    fn book_from(&self, row: &rusqlite::Row) -> Result<Book, rusqlite::Error> {
+        let id: String = row.get(0)?;
+        Ok(Book::builder()
+            .id(Uuid::from_str(&id).unwrap())
+            .title(row.get(1)?)
+            .author(row.get(2)?)
+            .maybe_isbn(row.get(3)?)
+            .maybe_originally_published(row.get(4)?)
+            .maybe_edition(row.get(5)?)
+            .maybe_edition_published(row.get(6)?)
+            .status(row.get(7)?)
+            .created(row.get(8)?)
+            .updated(row.get(9)?)
+            .build())
     }
 }
 
@@ -82,7 +173,7 @@ impl rusqlite::ToSql for Status {
     fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
         let value = match self {
             Status::Available => "available",
-            Status::Loaned { to } => &format!("Loaned to '{to}'"),
+            Status::Loaned { on, to } => &format!("Loaned to '{to}'"),
             Status::Removed { on, reason } => "Removed",
         };
         Ok(rusqlite::types::ToSqlOutput::Owned(
@@ -93,10 +184,116 @@ impl rusqlite::ToSql for Status {
 
 impl rusqlite::types::FromSql for Status {
     fn column_result(value: rusqlite::types::ValueRef<'_>) -> rusqlite::types::FromSqlResult<Self> {
-        let status = match value {
-            rusqlite::types::ValueRef::Text(text) => Status::Available,
-            _ => panic!(),
-        };
-        rusqlite::types::FromSqlResult::Ok(status)
+        match value {
+            rusqlite::types::ValueRef::Text(text) => Ok(Status::Available),
+            _ => Err(rusqlite::types::FromSqlError::InvalidType),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod cache_tests {
+        use super::*;
+
+        mod search_tests {
+            use std::str::FromStr;
+
+            use uuid::Uuid;
+
+            use super::*;
+
+            #[test]
+            fn returns_books_with_matching_isbn() {
+                let books = vec![
+                    book(None, None, Some("1234")),
+                    book(Some("Feersum Endjinn"), Some("Iain M. Banks"), Some("5678")),
+                    book(Some("Orlando"), Some("Virginia Woolfe"), None),
+                ];
+                let delegate = InMemoryCatalogue {
+                    books: Mutex::new(books),
+                };
+                let cache = Cache::new(Box::new(delegate));
+
+                let actual = cache.search(Search::Isbn("1234".to_string())).unwrap();
+                assert_eq!(actual, vec![book(None, None, Some("1234"))])
+            }
+
+            #[test]
+            fn returns_books_with_matching_title() {
+                let books = vec![
+                    book(None, None, Some("1234")),
+                    book(Some("Feersum Endjinn"), Some("Iain M. Banks"), Some("5678")),
+                    book(Some("Orlando"), Some("Virginia Woolfe"), None),
+                ];
+                let delegate = InMemoryCatalogue {
+                    books: Mutex::new(books),
+                };
+                let cache = Cache::new(Box::new(delegate));
+
+                let actual = cache
+                    .search(Search::Title("In Cold Blood".to_string()))
+                    .unwrap();
+                assert_eq!(actual, vec![book(None, None, Some("1234"))])
+            }
+
+            #[test]
+            fn returns_books_with_matching_author() {
+                let books = vec![
+                    book(None, None, Some("1234")),
+                    book(Some("Feersum Endjinn"), Some("Iain M. Banks"), Some("5678")),
+                    book(Some("Orlando"), Some("Virginia Woolfe"), None),
+                ];
+                let delegate = InMemoryCatalogue {
+                    books: Mutex::new(books),
+                };
+                let cache = Cache::new(Box::new(delegate));
+
+                let actual = cache
+                    .search(Search::Author("Truman Capote".to_string()))
+                    .unwrap();
+                assert_eq!(actual, vec![book(None, None, Some("1234"))])
+            }
+
+            fn book(title: Option<&str>, author: Option<&str>, isbn: Option<&str>) -> Book {
+                Book::builder()
+                    .id(Uuid::from_str("955ed41d-9411-45c7-91b7-c8c11abbf24e").unwrap())
+                    .title(title.unwrap_or("In Cold Blood").to_string())
+                    .author(author.unwrap_or("Truman Capote").to_string())
+                    .maybe_isbn(isbn.map(|x| x.to_string()))
+                    .status(Status::Available)
+                    .created("2026-08-11T20:50:00Z".parse().unwrap())
+                    .updated("2026-08-11T20:50:00Z".parse().unwrap())
+                    .build()
+            }
+        }
+
+        struct InMemoryCatalogue {
+            books: Mutex<Vec<Book>>,
+        }
+
+        impl Catalogue for InMemoryCatalogue {
+            fn add(&self, book: Book) -> Result<(), &'static str> {
+                Ok(self.books.lock().unwrap().push(book))
+            }
+
+            fn update(&self, book: Book) -> Result<(), &'static str> {
+                let index = self
+                    .books
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .position(|b| *b == book)
+                    .unwrap();
+                self.books.lock().unwrap()[index] = book;
+                Ok(())
+            }
+
+            fn list(&self) -> Result<Vec<Book>, &'static str> {
+                Ok(self.books.lock().unwrap().to_vec())
+            }
+        }
     }
 }

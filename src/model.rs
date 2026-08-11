@@ -2,22 +2,24 @@ use bon::Builder;
 use jiff::{Timestamp, civil::Date};
 use uuid::Uuid;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub enum Status {
     Available,
-    Loaned { to: String },
+    Loaned { on: Date, to: String },
     Removed { on: Date, reason: Option<String> },
 }
 
-#[derive(Debug, Builder)]
+#[derive(Debug, Clone, Builder)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Book {
     id: Uuid,
     title: String,
     author: String,
     isbn: Option<String>,
-    originally_published: Option<u8>,
+    originally_published: Option<u16>,
     edition: Option<String>,
-    edition_published: Option<u8>,
+    edition_published: Option<u16>,
     status: Status,
     created: Timestamp,
     updated: Timestamp,
@@ -40,7 +42,7 @@ impl Book {
         self.isbn.as_deref()
     }
 
-    pub fn originally_published(&self) -> Option<u8> {
+    pub fn originally_published(&self) -> Option<u16> {
         self.originally_published
     }
 
@@ -48,7 +50,7 @@ impl Book {
         self.edition.as_deref()
     }
 
-    pub fn edition_published(&self) -> Option<u8> {
+    pub fn edition_published(&self) -> Option<u16> {
         self.edition_published
     }
 

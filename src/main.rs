@@ -1,22 +1,50 @@
-use jiff::Timestamp;
-use uuid::Uuid;
-
-use crate::model::{Book, Status};
+use crate::catalogue::{Cache, DatabaseCatalogue, Searchable};
 
 mod catalogue;
 mod model;
 
-fn main() {
-    let book = Book::builder()
-        .id(Uuid::new_v4())
-        .title("The Lord of the Rings".to_string())
-        .author("J. R. R. Tolkein".to_string())
-        .status(Status::Loaned {
-            to: "Oz".to_string(),
-        })
-        .created(Timestamp::now())
-        .updated(Timestamp::now())
-        .build();
+const CREATE: &str = "
+    BEGIN;
+    CREATE TABLE books (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        author TEXT NOT NULL,
+        isbn TEXT,
+        originally_published INTEGER,
+        edition TEXT,
+        edition_published INTEGER,
+        status TEXT NOT NULL,
+        created TEXT NOT NULL,
+        updated TEXT NOT NULL
+    );
 
-    println!("{book:?}");
+    INSERT INTO books VALUES (
+        '955ed41d-9411-45c7-91b7-c8c11abbf24e',
+        'In Cold Blood',
+        'Truman Capote',
+        '1234',
+        1960,
+        NULL,
+        NULL,
+        'something',
+        '2026-08-11T20:05:00Z',
+        '2026-08-11T20:05:00Z'
+    );
+    END;
+";
+
+fn main() {
+    let connection = rusqlite::Connection::open_in_memory().unwrap();
+    connection.execute_batch(CREATE).unwrap();
+
+    let catalogue = DatabaseCatalogue::new(connection);
+    let cache = Cache::new(Box::new(catalogue));
+
+    let books = cache
+        .search(catalogue::Search::Isbn("1234".to_string()))
+        .unwrap();
+
+    for book in books {
+        println!("{book:?}");
+    }
 }
