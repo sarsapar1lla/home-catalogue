@@ -2,6 +2,7 @@ use std::sync::Mutex;
 
 use crate::model::{Author, Book, Status};
 
+#[derive(Debug, Clone)]
 pub enum Search {
     Isbn(String),
     Title(String),
