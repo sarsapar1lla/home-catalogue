@@ -1,11 +1,10 @@
 UPDATE books
 SET
     title = :title,
+    subtitle = :subtitle,
     author = :author,
     isbn = :isbn,
-    originally_published = :originally_published,
-    edition = :edition,
-    edition_published = :edition_published,
+    first_published = :first_published,
     status = :status,
     updated = :updated
 WHERE id = :id

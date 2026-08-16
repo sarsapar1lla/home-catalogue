@@ -1,13 +1,22 @@
 use bon::Builder;
 use jiff::{Timestamp, civil::Date};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub enum Status {
     Available,
-    Loaned { on: Date, to: String },
+    LoanedIn { on: Date, from: String },
+    LoanedOut { on: Date, to: String },
     Removed { on: Date, reason: Option<String> },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
+pub enum Author {
+    Single(String),
+    Several(Vec<String>),
 }
 
 #[derive(Debug, Clone, Builder)]
@@ -15,11 +24,10 @@ pub enum Status {
 pub struct Book {
     id: Uuid,
     title: String,
-    author: String,
+    subtitle: Option<String>,
+    author: Author,
     isbn: Option<String>,
-    originally_published: Option<u16>,
-    edition: Option<String>,
-    edition_published: Option<u16>,
+    first_published: Option<u16>,
     status: Status,
     created: Timestamp,
     updated: Timestamp,
@@ -34,7 +42,11 @@ impl Book {
         &self.title
     }
 
-    pub fn author(&self) -> &str {
+    pub fn subtitle(&self) -> Option<&str> {
+        self.subtitle.as_deref()
+    }
+
+    pub fn author(&self) -> &Author {
         &self.author
     }
 
@@ -42,16 +54,8 @@ impl Book {
         self.isbn.as_deref()
     }
 
-    pub fn originally_published(&self) -> Option<u16> {
-        self.originally_published
-    }
-
-    pub fn edition(&self) -> Option<&str> {
-        self.edition.as_deref()
-    }
-
-    pub fn edition_published(&self) -> Option<u16> {
-        self.edition_published
+    pub fn first_published(&self) -> Option<u16> {
+        self.first_published
     }
 
     pub fn status(&self) -> &Status {

@@ -1,8 +1,6 @@
-use std::{str::FromStr, sync::Mutex};
+use std::sync::Mutex;
 
-use uuid::Uuid;
-
-use crate::model::{Book, Status};
+use crate::model::{Author, Book, Status};
 
 pub enum Search {
     Isbn(String),
@@ -49,7 +47,10 @@ impl Searchable for Cache {
                 .lock()
                 .expect("Can lock mutex")
                 .iter()
-                .filter(|book| book.author() == author)
+                .filter(|book| match book.author() {
+                    Author::Single(single_author) => single_author == &author,
+                    Author::Several(authors) => authors.contains(&author),
+                })
                 .cloned()
                 .collect()),
         }
@@ -101,11 +102,10 @@ impl Catalogue for DatabaseCatalogue {
                 rusqlite::named_params! {
                     ":id": book.id(),
                     ":title": book.title(),
+                    ":subtitle": book.subtitle(),
                     ":author": book.author(),
                     ":isbn": book.isbn(),
-                    ":originally_published": book.originally_published(),
-                    ":edition": book.edition(),
-                    ":edition_published": book.edition_published(),
+                    ":first_published": book.first_published(),
                     ":status": book.status(),
                     ":created": book.created(),
                     ":updated": book.updated(),
@@ -121,13 +121,12 @@ impl Catalogue for DatabaseCatalogue {
             .execute(
                 include_str!("./sql/update.sql"),
                 rusqlite::named_params! {
-                    ":id": book.id().to_string(),
+                    ":id": book.id(),
                     ":title": book.title(),
+                    ":subtitle": book.subtitle(),
                     ":author": book.author(),
                     ":isbn": book.isbn(),
-                    ":originally_published": book.originally_published(),
-                    ":edition": book.edition(),
-                    ":edition_published": book.edition_published(),
+                    ":first_published": book.first_published(),
                     ":status": book.status(),
                     ":updated": book.updated(),
                 },
@@ -153,39 +152,61 @@ impl DatabaseCatalogue {
     }
 
     fn book_from(&self, row: &rusqlite::Row) -> Result<Book, rusqlite::Error> {
-        let id: String = row.get(0)?;
         Ok(Book::builder()
-            .id(Uuid::from_str(&id).unwrap())
+            .id(row.get(0)?)
             .title(row.get(1)?)
-            .author(row.get(2)?)
-            .maybe_isbn(row.get(3)?)
-            .maybe_originally_published(row.get(4)?)
-            .maybe_edition(row.get(5)?)
-            .maybe_edition_published(row.get(6)?)
-            .status(row.get(7)?)
-            .created(row.get(8)?)
-            .updated(row.get(9)?)
+            .maybe_subtitle(row.get(2)?)
+            .author(row.get(3)?)
+            .maybe_isbn(row.get(4)?)
+            .maybe_first_published(row.get(5)?)
+            .status(row.get(6)?)
+            .created(row.get(7)?)
+            .updated(row.get(8)?)
             .build())
     }
 }
 
 impl rusqlite::ToSql for Status {
     fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
-        let value = match self {
-            Status::Available => "available",
-            Status::Loaned { on, to } => &format!("Loaned to '{to}'"),
-            Status::Removed { on, reason } => "Removed",
-        };
-        Ok(rusqlite::types::ToSqlOutput::Owned(
-            rusqlite::types::Value::Text(value.to_string()),
-        ))
+        match serde_json::to_string(self) {
+            Ok(json) => Ok(rusqlite::types::ToSqlOutput::Owned(
+                rusqlite::types::Value::Text(json),
+            )),
+            Err(err) => Err(rusqlite::Error::ToSqlConversionFailure(err.into())),
+        }
     }
 }
 
 impl rusqlite::types::FromSql for Status {
     fn column_result(value: rusqlite::types::ValueRef<'_>) -> rusqlite::types::FromSqlResult<Self> {
         match value {
-            rusqlite::types::ValueRef::Text(text) => Ok(Status::Available),
+            rusqlite::types::ValueRef::Text(json) => match serde_json::from_slice(json) {
+                Ok(status) => Ok(status),
+                Err(_) => Err(rusqlite::types::FromSqlError::InvalidType),
+            },
+            _ => Err(rusqlite::types::FromSqlError::InvalidType),
+        }
+    }
+}
+
+impl rusqlite::ToSql for Author {
+    fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
+        match serde_json::to_string(self) {
+            Ok(json) => Ok(rusqlite::types::ToSqlOutput::Owned(
+                rusqlite::types::Value::Text(json),
+            )),
+            Err(err) => Err(rusqlite::Error::ToSqlConversionFailure(err.into())),
+        }
+    }
+}
+
+impl rusqlite::types::FromSql for Author {
+    fn column_result(value: rusqlite::types::ValueRef<'_>) -> rusqlite::types::FromSqlResult<Self> {
+        match value {
+            rusqlite::types::ValueRef::Text(json) => match serde_json::from_slice(json) {
+                Ok(status) => Ok(status),
+                Err(_) => Err(rusqlite::types::FromSqlError::InvalidType),
+            },
             _ => Err(rusqlite::types::FromSqlError::InvalidType),
         }
     }
@@ -261,7 +282,9 @@ mod tests {
                 Book::builder()
                     .id(Uuid::from_str("955ed41d-9411-45c7-91b7-c8c11abbf24e").unwrap())
                     .title(title.unwrap_or("In Cold Blood").to_string())
-                    .author(author.unwrap_or("Truman Capote").to_string())
+                    .author(Author::Single(
+                        author.unwrap_or("Truman Capote").to_string(),
+                    ))
                     .maybe_isbn(isbn.map(|x| x.to_string()))
                     .status(Status::Available)
                     .created("2026-08-11T20:50:00Z".parse().unwrap())

@@ -2,11 +2,10 @@ INSERT INTO books
 (
     id,
     title,
+    subtitle,
     author,
     isbn,
-    originally_published,
-    edition,
-    edition_published,
+    first_published,
     status,
     created,
     updated
@@ -15,11 +14,10 @@ VALUES
 (
     :id,
     :title,
+    :subtitle,
     :author,
     :isbn,
-    :originally_published,
-    :edition,
-    :edition_published,
+    :first_published,
     :status,
     :created,
     :updated
