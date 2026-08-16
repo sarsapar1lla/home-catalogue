@@ -1,0 +1,24 @@
+INSERT INTO books
+(
+    id,
+    title,
+    subtitle,
+    author,
+    isbn,
+    first_published,
+    status,
+    created,
+    updated
+)
+VALUES
+(
+    :id,
+    :title,
+    :subtitle,
+    :author,
+    :isbn,
+    :first_published,
+    :status,
+    :created,
+    :updated
+)

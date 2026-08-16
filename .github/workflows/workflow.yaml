@@ -1,0 +1,25 @@
+name: Build for Raspberry Pi
+
+on: push
+
+jobs:
+  test-and-build:
+    name: Run tests and build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v6
+
+      - name: Test with cargo
+        run: cargo test
+
+      - name: Install cargo-cross
+        run: cargo install cross
+
+      - name: Cross compile with cargo-cross
+        run: cross build --target armv7-unknown-linux-gnueabihf
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: homecat
+          path: ./target/armv7-unknown-linux-gnueabihf/debug/home-catalogue
