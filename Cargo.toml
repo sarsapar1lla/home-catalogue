@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 bon = "3.9.3"
+iced = "0.14.0"
 jiff = { version = "0.2.35", features = ["serde"] }
 rusqlite = { version = "0.40.2", features = ["bundled", "jiff", "uuid"] }
 serde = { version = "1.0.229", features = ["derive"] }

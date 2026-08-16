@@ -3,10 +3,12 @@ use uuid::Uuid;
 
 use crate::{
     catalogue::{Cache, Catalogue, DatabaseCatalogue, Searchable},
+    gui::App,
     model::{Author, Book},
 };
 
 mod catalogue;
+mod gui;
 mod model;
 
 const CREATE: &str = "
@@ -64,11 +66,5 @@ fn main() {
         )
         .unwrap();
 
-    let books = cache
-        .search(catalogue::Search::Isbn("1234".to_string()))
-        .unwrap();
-
-    for book in books {
-        println!("{book:?}");
-    }
+    iced::run(App::update, App::view).unwrap();
 }

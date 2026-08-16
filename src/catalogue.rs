@@ -69,7 +69,7 @@ impl Catalogue for Cache {
     }
 
     fn list(&self) -> Result<Vec<Book>, &'static str> {
-        self.delegate.list()
+        Ok(self.cache.lock().expect("Can lock mutex").to_vec())
     }
 }
 
