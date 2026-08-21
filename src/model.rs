@@ -3,8 +3,7 @@ use jiff::{Timestamp, civil::Date};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(test, derive(PartialEq, Eq))]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Status {
     Available,
     LoanedIn { on: Date, from: String },
@@ -12,15 +11,13 @@ pub enum Status {
     Removed { on: Date, reason: Option<String> },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(test, derive(PartialEq, Eq))]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Author {
     Single(String),
     Several(Vec<String>),
 }
 
-#[derive(Debug, Clone, Builder)]
-#[cfg_attr(test, derive(PartialEq, Eq))]
+#[derive(Debug, Clone, Builder, PartialEq, Eq)]
 pub struct Book {
     id: Uuid,
     title: String,
