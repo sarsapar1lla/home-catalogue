@@ -6,7 +6,8 @@ mod model;
 
 fn main() {
     iced::application(App::default, App::update, App::view)
-        .theme(iced::Theme::SolarizedLight)
+        .title("HomeCat")
+        .theme(iced::Theme::CatppuccinMocha)
         .subscription(App::subscription)
         .run()
         .unwrap();

@@ -6,6 +6,8 @@ INSERT INTO books
     author,
     isbn,
     first_published,
+    owner,
+    notes,
     status,
     created,
     updated
@@ -18,6 +20,8 @@ VALUES
     :author,
     :isbn,
     :first_published,
+    :owner,
+    :notes,
     :status,
     :created,
     :updated

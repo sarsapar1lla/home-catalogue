@@ -50,7 +50,11 @@ impl Searchable for Cache {
                 .iter()
                 .filter(|book| match book.author() {
                     Author::Single(single_author) => single_author == &author,
-                    Author::Several(authors) => authors.contains(&author),
+                    Author::Several {
+                        first,
+                        second,
+                        rest,
+                    } => first == &author || second == &author || rest.contains(&author),
                 })
                 .cloned()
                 .collect()),
@@ -107,6 +111,8 @@ impl Catalogue for DatabaseCatalogue {
                     ":author": book.author(),
                     ":isbn": book.isbn(),
                     ":first_published": book.first_published(),
+                    ":owner": book.owner(),
+                    ":notes": book.notes(),
                     ":status": book.status(),
                     ":created": book.created(),
                     ":updated": book.updated(),
@@ -128,6 +134,8 @@ impl Catalogue for DatabaseCatalogue {
                     ":author": book.author(),
                     ":isbn": book.isbn(),
                     ":first_published": book.first_published(),
+                    ":owner": book.owner(),
+                    ":notes": book.notes(),
                     ":status": book.status(),
                     ":updated": book.updated(),
                 },
@@ -160,9 +168,11 @@ impl DatabaseCatalogue {
             .author(row.get(3)?)
             .maybe_isbn(row.get(4)?)
             .maybe_first_published(row.get(5)?)
-            .status(row.get(6)?)
-            .created(row.get(7)?)
-            .updated(row.get(8)?)
+            .owner(row.get(6)?)
+            .maybe_notes(row.get(7)?)
+            .status(row.get(8)?)
+            .created(row.get(9)?)
+            .updated(row.get(10)?)
             .build())
     }
 }
@@ -287,6 +297,7 @@ mod tests {
                         author.unwrap_or("Truman Capote").to_string(),
                     ))
                     .maybe_isbn(isbn.map(|x| x.to_string()))
+                    .owner("Tim".into())
                     .status(Status::Available)
                     .created("2026-08-11T20:50:00Z".parse().unwrap())
                     .updated("2026-08-11T20:50:00Z".parse().unwrap())

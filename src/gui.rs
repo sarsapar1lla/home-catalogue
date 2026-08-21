@@ -5,7 +5,7 @@ use iced::{
     keyboard::{self},
     widget::{button, column, container, image, row, text, text_input},
 };
-use jiff::Timestamp;
+use jiff::{Timestamp, tz::TimeZone};
 use uuid::Uuid;
 
 use crate::{
@@ -14,9 +14,15 @@ use crate::{
 };
 
 #[derive(Debug, Clone)]
+pub enum KeyPress {
+    S,
+    Escape,
+}
+
+#[derive(Debug, Clone)]
 pub enum Message {
     Home,
-    BeginSearch,
+    SubscribedKeyPress(KeyPress),
     SearchFormInput(String),
     ExecuteSearch(Search),
 }
@@ -43,6 +49,8 @@ impl App {
                     .author(Author::Single("Truman Capote".to_string()))
                     .isbn("1234".to_string())
                     .first_published(1960)
+                    .owner("Tim".into())
+                    .notes("This is a really good book!".into())
                     .status(Status::Available)
                     .created(created)
                     .updated(created)
@@ -86,12 +94,13 @@ impl App {
     pub fn update(&mut self, message: Message) {
         match message {
             Message::Home => self.screen = Screen::Home,
-            Message::BeginSearch if self.screen == Screen::Home => {
+            Message::SubscribedKeyPress(KeyPress::Escape) => self.screen = Screen::Home,
+            Message::SubscribedKeyPress(KeyPress::S) if self.screen == Screen::Home => {
                 self.screen = Screen::SearchForm {
                     isbn: String::new(),
                 }
             }
-            Message::BeginSearch => {}
+            Message::SubscribedKeyPress(_) => {}
             Message::SearchFormInput(input) => self.screen = Screen::SearchForm { isbn: input },
             Message::ExecuteSearch(search) => {
                 let books = self.cache.search(search).unwrap();
@@ -115,8 +124,12 @@ impl App {
             };
 
             match modified_key {
-                keyboard::Key::Character(c) if c == "s" => Some(Message::BeginSearch),
-                keyboard::Key::Named(keyboard::key::Named::Escape) => Some(Message::Home),
+                keyboard::Key::Character(c) if c == "s" => {
+                    Some(Message::SubscribedKeyPress(KeyPress::S))
+                }
+                keyboard::Key::Named(keyboard::key::Named::Escape) => {
+                    Some(Message::SubscribedKeyPress(KeyPress::Escape))
+                }
                 _ => None,
             }
         })
@@ -125,7 +138,15 @@ impl App {
     fn compact_book(&self, book: &Book) -> Element<'_, Message> {
         let author_text = match book.author() {
             Author::Single(author) => author.to_string(),
-            Author::Several(authors) => authors.join(" and "),
+            Author::Several {
+                first,
+                second,
+                rest,
+            } => match &rest[..] {
+                [] => format!("{first} and {second}"),
+                [one] => format!("{first}, {second}, and {one}"),
+                _ => format!("{first}, {second}, et al."),
+            },
         };
         container(row![
             text(book.title().to_string()),
@@ -141,21 +162,41 @@ impl App {
     fn highlighted_book(&self, book: &Book) -> Element<'_, Message> {
         let author_text = match book.author() {
             Author::Single(author) => author.to_string(),
-            Author::Several(authors) => authors.join(" and "),
+            Author::Several {
+                first,
+                second,
+                rest,
+            } => match &rest[..] {
+                [] => format!("{first} and {second}"),
+                [one] => format!("{first}, {second}, and {one}"),
+                _ => format!("{first}, {second}, et al."),
+            },
         };
         let title = container(text(book.title().to_string()).size(30).center())
             .align_left(Fill)
             .padding(10);
+        let first_published = book
+            .first_published()
+            .map(|year| text(format!("First published: {year}")));
+        let notes = book.notes().map(|notes| text(format!("Notes: {notes}")));
         let info = container(column![
             text(format!("Author(s): {author_text}")),
+            first_published,
+            text(format!("Owner: {}", book.owner().to_string())),
+            notes,
+            text(format!("Status: {:?}", book.status())),
             text(format!(
-                "First published: {}",
-                book.first_published()
-                    .map_or("Unknown".to_string(), |year| year.to_string())
+                "Added: {}",
+                book.created().to_zoned(TimeZone::system()).date()
             )),
-            text(format!("Status: {:?}", book.status()))
+            text(format!(
+                "Last updated: {}",
+                book.updated()
+                    .to_zoned(TimeZone::system())
+                    .strftime("%A, %d %B %Y at %H:%M:%S %Z")
+            )),
         ])
-        .padding(20);
+        .padding(50);
         container(column![title, row![image("in_cold_blood.jpg"), info]])
             .padding(20)
             .align_left(Fill)

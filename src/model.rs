@@ -14,7 +14,11 @@ pub enum Status {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Author {
     Single(String),
-    Several(Vec<String>),
+    Several {
+        first: String,
+        second: String,
+        rest: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone, Builder, PartialEq, Eq)]
@@ -25,6 +29,8 @@ pub struct Book {
     author: Author,
     isbn: Option<String>,
     first_published: Option<u16>,
+    owner: String,
+    notes: Option<String>,
     status: Status,
     created: Timestamp,
     updated: Timestamp,
@@ -53,6 +59,14 @@ impl Book {
 
     pub fn first_published(&self) -> Option<u16> {
         self.first_published
+    }
+
+    pub fn owner(&self) -> &str {
+        &self.owner
+    }
+
+    pub fn notes(&self) -> Option<&str> {
+        self.notes.as_deref()
     }
 
     pub fn status(&self) -> &Status {

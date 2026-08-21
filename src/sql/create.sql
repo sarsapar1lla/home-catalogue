@@ -5,6 +5,8 @@ CREATE TABLE books (
     author TEXT NOT NULL,
     isbn TEXT,
     first_published INTEGER,
+    owner TEXT NOT NULL,
+    notes TEXT,
     status TEXT NOT NULL,
     created TEXT NOT NULL,
     updated TEXT NOT NULL
