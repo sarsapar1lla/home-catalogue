@@ -8,6 +8,7 @@ INSERT INTO books
     first_published,
     owner,
     notes,
+    cover_image,
     status,
     created,
     updated
@@ -22,6 +23,7 @@ VALUES
     :first_published,
     :owner,
     :notes,
+    :cover_image,
     :status,
     :created,
     :updated

@@ -113,6 +113,7 @@ impl Catalogue for DatabaseCatalogue {
                     ":first_published": book.first_published(),
                     ":owner": book.owner(),
                     ":notes": book.notes(),
+                    ":cover_image": book.cover_image(),
                     ":status": book.status(),
                     ":created": book.created(),
                     ":updated": book.updated(),
@@ -136,6 +137,7 @@ impl Catalogue for DatabaseCatalogue {
                     ":first_published": book.first_published(),
                     ":owner": book.owner(),
                     ":notes": book.notes(),
+                    ":cover_image": book.cover_image(),
                     ":status": book.status(),
                     ":updated": book.updated(),
                 },
@@ -170,9 +172,10 @@ impl DatabaseCatalogue {
             .maybe_first_published(row.get(5)?)
             .owner(row.get(6)?)
             .maybe_notes(row.get(7)?)
-            .status(row.get(8)?)
-            .created(row.get(9)?)
-            .updated(row.get(10)?)
+            .maybe_cover_image(row.get(8)?)
+            .status(row.get(9)?)
+            .created(row.get(10)?)
+            .updated(row.get(11)?)
             .build())
     }
 }

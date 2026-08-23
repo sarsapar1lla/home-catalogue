@@ -7,6 +7,7 @@ CREATE TABLE books (
     first_published INTEGER,
     owner TEXT NOT NULL,
     notes TEXT,
+    cover_image BLOB,
     status TEXT NOT NULL,
     created TEXT NOT NULL,
     updated TEXT NOT NULL
