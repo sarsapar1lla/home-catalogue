@@ -126,7 +126,7 @@ impl App {
 
                 let books = [books_by_isbn, books_by_title, books_by_author].concat();
                 self.search_result = Some(SearchResult {
-                    books: books,
+                    books,
                     highlighted: None,
                 });
                 self.screen = Screen::Search;
@@ -200,7 +200,7 @@ impl App {
 
     fn highlighted_book(&self, book: &Book) -> Element<'_, Message> {
         let author = Text::new(match book.author() {
-            Author::Single(author) => format!("Author: {}", author.to_string()),
+            Author::Single(author) => format!("Author: {}", author),
             Author::Several {
                 first,
                 second,
@@ -230,7 +230,10 @@ impl App {
                 Status::Available => "Available".to_string(),
                 Status::LoanedIn { on, from } => format!("Loaned from {from} on {on}"),
                 Status::LoanedOut { on, to } => format!("Loaned to {to} on {on}"),
-                Status::Removed { on, reason } if let Some(reason) = reason => {
+                Status::Removed {
+                    on,
+                    reason: Some(reason),
+                } => {
                     format!("Removed on {on}: {reason}")
                 }
                 Status::Removed { on, reason: _ } => format!("Removed on {on}"),
@@ -241,7 +244,7 @@ impl App {
             Column::new()
                 .push(author)
                 .push(first_published)
-                .push(Text::new(format!("Owner: {}", book.owner().to_string())))
+                .push(Text::new(format!("Owner: {}", book.owner())))
                 .push(notes)
                 .push(status)
                 .push("\n")
@@ -277,25 +280,19 @@ impl App {
 
     fn books(&self, books: &[Book], highlighted: Option<&usize>) -> Element<'_, Message> {
         Container::new(
-            Column::new().extend(
-                books
-                    .into_iter()
-                    .enumerate()
-                    .into_iter()
-                    .map(|(idx, book)| {
-                        if let Some(picked) = highlighted
-                            && idx == *picked
-                        {
-                            MouseArea::new(self.highlighted_book(book))
-                                .on_double_click(Message::SearchResultDehighlighted)
-                                .into()
-                        } else {
-                            MouseArea::new(self.compact_book(book))
-                                .on_double_click(Message::SearchResultHighlighted(idx))
-                                .into()
-                        }
-                    }),
-            ),
+            Column::new().extend(books.iter().enumerate().map(|(idx, book)| {
+                if let Some(picked) = highlighted
+                    && idx == *picked
+                {
+                    MouseArea::new(self.highlighted_book(book))
+                        .on_double_click(Message::SearchResultDehighlighted)
+                        .into()
+                } else {
+                    MouseArea::new(self.compact_book(book))
+                        .on_double_click(Message::SearchResultHighlighted(idx))
+                        .into()
+                }
+            })),
         )
         .style(container::rounded_box)
         .into()
