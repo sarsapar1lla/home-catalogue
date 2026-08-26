@@ -14,6 +14,10 @@ use crate::{
     model::{Author, Book, Status},
 };
 
+const NANO: &[u8] = include_bytes!("../nano.jpg");
+const IN_COLD_BLOOD: &[u8] = include_bytes!("../in_cold_blood.jpg");
+const BREAKFAST: &[u8] = include_bytes!("../breakfast.jpg");
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum Screen {
     Home,
@@ -60,7 +64,6 @@ impl App {
             )
             .unwrap();
 
-        let cover_image = std::fs::read("breakfast.jpg").unwrap();
         cache
             .add(
                 Book::builder()
@@ -70,7 +73,7 @@ impl App {
                     .isbn("5678".to_string())
                     .first_published(1963)
                     .owner("Tim".into())
-                    .cover_image(cover_image)
+                    .cover_image(BREAKFAST.to_vec())
                     .status(Status::LoanedOut {
                         on: date(2026, 7, 1),
                         to: "Oz".into(),
@@ -259,7 +262,7 @@ impl App {
         let cover_image = book
             .cover_image()
             .map(|bytes| Image::new(iced::widget::image::Handle::from_bytes(bytes.to_vec())))
-            .unwrap_or_else(|| Image::new("in_cold_blood.jpg"));
+            .unwrap_or_else(|| Image::new(iced::widget::image::Handle::from_bytes(IN_COLD_BLOOD)));
 
         Container::new(
             Column::new()
@@ -301,7 +304,7 @@ impl App {
     fn home_screen(&self) -> Element<'_, Message> {
         Container::new(
             Column::new()
-                .push(Image::new("nano.jpg"))
+                .push(Image::new(iced::widget::image::Handle::from_bytes(NANO)))
                 .push(Container::new(Text::new("HomeCat").size(40).center()).center(Fill))
                 .push(
                     Container::new(Text::new(format!("v{}", env!("CARGO_PKG_VERSION"))).size(12))

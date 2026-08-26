@@ -17,7 +17,7 @@ jobs:
         run: cargo install cross
 
       - name: Cross compile with cargo-cross
-        run: cross build --target armv7-unknown-linux-gnueabihf
+        run: cross build --target armv7-unknown-linux-gnueabihf --release
 
       - uses: actions/upload-artifact@v4
         with:
