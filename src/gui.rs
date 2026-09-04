@@ -171,9 +171,6 @@ impl App {
             };
 
             match modified_key {
-                keyboard::Key::Character(c) if c == "s" => {
-                    Some(Message::NavigateTo(Screen::Search))
-                }
                 keyboard::Key::Named(keyboard::key::Named::Escape) => {
                     Some(Message::NavigateTo(Screen::Home))
                 }

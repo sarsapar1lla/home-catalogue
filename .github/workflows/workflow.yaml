@@ -2,6 +2,9 @@ name: Build for Raspberry Pi
 
 on: push
 
+env:
+  TARGET: aarch64-unknown-linux-gnu
+
 jobs:
   test-and-build:
     name: Run tests and build
@@ -17,9 +20,9 @@ jobs:
         run: cargo install cross
 
       - name: Cross compile with cargo-cross
-        run: cross build --target armv7-unknown-linux-gnueabihf --release
+        run: cross build --target ${{ env.TARGET }} --release
 
       - uses: actions/upload-artifact@v7
         with:
           name: homecat
-          path: ./target/aarch64-unknown-linux-gnu/release/home-catalogue
+          path: ./target/${{ env.TARGET }}/release/home-catalogue
