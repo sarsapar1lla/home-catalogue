@@ -4,7 +4,7 @@ use iced::{
     Subscription,
     keyboard::{self},
     padding,
-    widget::{Column, Container, Image, MouseArea, Row, Text, TextInput, container},
+    widget::{Button, Column, Container, Image, MouseArea, Row, Text, TextInput, container},
 };
 use jiff::{Timestamp, civil::date, tz::TimeZone};
 use uuid::Uuid;
@@ -14,12 +14,12 @@ use crate::{
     model::{Author, Book, Status},
 };
 
-const NANO: &[u8] = include_bytes!("../nano.jpg");
 const IN_COLD_BLOOD: &[u8] = include_bytes!("../in_cold_blood.jpg");
 const BREAKFAST: &[u8] = include_bytes!("../breakfast.jpg");
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Screen {
+    Browse,
     Home,
     Search,
 }
@@ -29,14 +29,15 @@ pub enum Message {
     NavigateTo(Screen),
     SearchInput(String),
     ExecuteSearch,
-    SearchResultHighlighted(usize),
-    SearchResultDehighlighted,
+    BookSelected(usize),
+    BookDeselected,
 }
 
 pub struct App {
     cache: Cache,
     screen: Screen,
     search_input: String,
+    browse_state: Option<BrowseState>,
     search_result: Option<SearchResult>,
 }
 
@@ -88,12 +89,14 @@ impl App {
             cache,
             screen: Screen::Home,
             search_input: String::new(),
+            browse_state: None,
             search_result: None,
         }
     }
 
     pub fn view(&self) -> Element<'_, Message> {
         match &self.screen {
+            Screen::Browse => self.browse_screen(),
             Screen::Home => self.home_screen(),
             Screen::Search => self.search_result(),
         }
@@ -127,25 +130,31 @@ impl App {
                 let books = [books_by_isbn, books_by_title, books_by_author].concat();
                 self.search_result = Some(SearchResult {
                     books,
-                    highlighted: None,
+                    selected: None,
                 });
                 self.screen = Screen::Search;
             }
-            Message::SearchResultHighlighted(index) => {
+            Message::BookSelected(index) if self.screen == Screen::Search => {
                 let search_result = self.search_result.take();
                 let search_result = search_result.map(|result| SearchResult {
                     books: result.books,
-                    highlighted: Some(index),
+                    selected: Some(index),
                 });
                 self.search_result = search_result;
             }
-            Message::SearchResultDehighlighted => {
+            Message::BookDeselected if self.screen == Screen::Search => {
                 let search_result = self.search_result.take();
                 let search_result = search_result.map(|result| SearchResult {
                     books: result.books,
-                    highlighted: None,
+                    selected: None,
                 });
                 self.search_result = search_result;
+            }
+            Message::BookSelected(index) => {
+                self.browse_state.as_mut().map(|state| state.select(index));
+            }
+            Message::BookDeselected => {
+                self.browse_state.as_mut().map(|state| state.deselect());
             }
         }
     }
@@ -198,7 +207,7 @@ impl App {
         .into()
     }
 
-    fn highlighted_book(&self, book: &Book) -> Element<'_, Message> {
+    fn selected_book(&self, book: &Book) -> Element<'_, Message> {
         let author = Text::new(match book.author() {
             Author::Single(author) => format!("Author: {}", author),
             Author::Several {
@@ -284,12 +293,12 @@ impl App {
                 if let Some(picked) = highlighted
                     && idx == *picked
                 {
-                    MouseArea::new(self.highlighted_book(book))
-                        .on_double_click(Message::SearchResultDehighlighted)
+                    MouseArea::new(self.selected_book(book))
+                        .on_release(Message::BookDeselected)
                         .into()
                 } else {
                     MouseArea::new(self.compact_book(book))
-                        .on_double_click(Message::SearchResultHighlighted(idx))
+                        .on_release(Message::BookSelected(idx))
                         .into()
                 }
             })),
@@ -298,11 +307,31 @@ impl App {
         .into()
     }
 
+    fn browse_screen(&self) -> Element<'_, Message> {
+        let results = match &self.browse_state {
+            None => None,
+            Some(BrowseState { books, selected: _ }) if books.is_empty() => Some(
+                Container::new(Text::new("No results to display :(").size(30).center())
+                    .center_x(Fill)
+                    .into(),
+            ),
+            Some(BrowseState {
+                books,
+                selected: highlighted,
+            }) => Some(self.books(books, highlighted.as_ref())),
+        };
+        Container::new(results).padding(100).center_x(Fill).into()
+    }
+
     fn home_screen(&self) -> Element<'_, Message> {
+        let buttons = Row::new()
+            .push(Button::new("Search").on_press(Message::NavigateTo(Screen::Search)))
+            .push(Button::new("Browse").on_press(Message::NavigateTo(Screen::Browse)))
+            .spacing(20);
         Container::new(
             Column::new()
-                .push(Image::new(iced::widget::image::Handle::from_bytes(NANO)))
                 .push(Container::new(Text::new("HomeCat").size(40).center()).center(Fill))
+                .push(Container::new(buttons).center(Fill))
                 .push(
                     Container::new(Text::new(format!("v{}", env!("CARGO_PKG_VERSION"))).size(12))
                         .align_bottom(Fill)
@@ -328,17 +357,15 @@ impl App {
     fn search_result(&self) -> Element<'_, Message> {
         let results = match &self.search_result {
             None => None,
-            Some(SearchResult {
-                books,
-                highlighted: _,
-            }) if books.is_empty() => Some(
+            Some(SearchResult { books, selected: _ }) if books.is_empty() => Some(
                 Container::new(Text::new("No results to display :(").size(30).center())
                     .center_x(Fill)
                     .into(),
             ),
-            Some(SearchResult { books, highlighted }) => {
-                Some(self.books(books, highlighted.as_ref()))
-            }
+            Some(SearchResult {
+                books,
+                selected: highlighted,
+            }) => Some(self.books(books, highlighted.as_ref())),
         };
         Container::new(Column::new().push(self.search_bar()).push(results))
             .padding(100)
@@ -361,5 +388,20 @@ fn setup_db(connection: &rusqlite::Connection) {
 
 struct SearchResult {
     books: Vec<Book>,
-    highlighted: Option<usize>,
+    selected: Option<usize>,
+}
+
+struct BrowseState {
+    books: Vec<Book>,
+    selected: Option<usize>,
+}
+
+impl BrowseState {
+    fn select(&mut self, index: usize) {
+        self.selected = Some(index);
+    }
+
+    fn deselect(&mut self) {
+        self.selected = None;
+    }
 }
