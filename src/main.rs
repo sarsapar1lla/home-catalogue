@@ -6,7 +6,7 @@ mod catalogue;
 mod gui;
 mod model;
 
-fn main() {
+fn main() -> Result<(), iced::Error> {
     iced::application(App::default, App::update, App::view)
         .title("HomeCat")
         .window_size(Size::new(1280.0, 720.0))
@@ -16,8 +16,7 @@ fn main() {
             family: iced::font::Family::Monospace,
             ..Default::default()
         })
-        .theme(iced::Theme::CatppuccinMocha)
+        .theme(App::theme())
         .subscription(App::subscription)
         .run()
-        .unwrap();
 }

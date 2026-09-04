@@ -1,7 +1,7 @@
 use iced::{
     Alignment, Element,
     Length::Fill,
-    Subscription,
+    Subscription, Theme,
     keyboard::{self},
     padding,
     widget::{Button, Column, Container, Image, MouseArea, Row, Text, TextInput, container},
@@ -16,6 +16,7 @@ use crate::{
 
 const IN_COLD_BLOOD: &[u8] = include_bytes!("../in_cold_blood.jpg");
 const BREAKFAST: &[u8] = include_bytes!("../breakfast.jpg");
+const PAGE_SIZE: usize = 5;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Screen {
@@ -31,9 +32,12 @@ pub enum Message {
     ExecuteSearch,
     BookSelected(usize),
     BookDeselected,
+    PageUp,
+    PageDown,
 }
 
 pub struct App {
+    theme: Theme,
     cache: Cache,
     screen: Screen,
     search_input: String,
@@ -41,7 +45,17 @@ pub struct App {
     search_result: Option<SearchResult>,
 }
 
+impl Default for App {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl App {
+    pub fn theme() -> Theme {
+        Theme::CatppuccinMocha
+    }
+
     pub fn new() -> Self {
         let connection = rusqlite::Connection::open_in_memory().unwrap();
         setup_db(&connection);
@@ -86,6 +100,7 @@ impl App {
             .unwrap();
 
         Self {
+            theme: App::theme(),
             cache,
             screen: Screen::Home,
             search_input: String::new(),
@@ -104,6 +119,14 @@ impl App {
 
     pub fn update(&mut self, message: Message) {
         match message {
+            Message::NavigateTo(Screen::Browse) => {
+                let books = self.cache.list().unwrap();
+                self.browse_state = Some(BrowseState {
+                    books: books,
+                    selected: None,
+                });
+                self.screen = Screen::Browse;
+            }
             Message::NavigateTo(screen) => self.screen = screen,
             Message::SearchInput(input) => {
                 self.screen = Screen::Search;
@@ -130,31 +153,39 @@ impl App {
                 let books = [books_by_isbn, books_by_title, books_by_author].concat();
                 self.search_result = Some(SearchResult {
                     books,
+                    page: 0,
                     selected: None,
                 });
-                self.screen = Screen::Search;
             }
             Message::BookSelected(index) if self.screen == Screen::Search => {
-                let search_result = self.search_result.take();
-                let search_result = search_result.map(|result| SearchResult {
-                    books: result.books,
-                    selected: Some(index),
-                });
-                self.search_result = search_result;
+                if let Some(result) = self.search_result.as_mut() {
+                    result.select(index);
+                }
             }
             Message::BookDeselected if self.screen == Screen::Search => {
-                let search_result = self.search_result.take();
-                let search_result = search_result.map(|result| SearchResult {
-                    books: result.books,
-                    selected: None,
-                });
-                self.search_result = search_result;
+                if let Some(result) = self.search_result.as_mut() {
+                    result.deselect();
+                }
             }
             Message::BookSelected(index) => {
-                self.browse_state.as_mut().map(|state| state.select(index));
+                if let Some(state) = self.browse_state.as_mut() {
+                    state.select(index);
+                }
             }
             Message::BookDeselected => {
-                self.browse_state.as_mut().map(|state| state.deselect());
+                if let Some(state) = self.browse_state.as_mut() {
+                    state.deselect();
+                }
+            }
+            Message::PageUp => {
+                if let Some(state) = self.search_result.as_mut() {
+                    state.page_up();
+                }
+            }
+            Message::PageDown => {
+                if let Some(state) = self.search_result.as_mut() {
+                    state.page_down();
+                }
             }
         }
     }
@@ -194,13 +225,38 @@ impl App {
         };
         Container::new(
             Row::new()
-                .push(Text::new(book.title().to_string()))
-                .push(Text::new(" | "))
-                .push(Text::new(author_text)),
+                .push(Text::new(book.title().to_string()).align_y(Alignment::Center))
+                .push(Text::new(" | ").align_y(Alignment::Center))
+                .push(Text::new(author_text).align_y(Alignment::Center))
+                .push(iced::widget::space::horizontal())
+                .push(self.status_box(book.status())),
         )
         .padding(10)
         .align_left(Fill)
         .style(container::bordered_box)
+        .into()
+    }
+
+    fn status_box(&self, status: &Status) -> Element<'_, Message> {
+        let (status_text, colour) = match status {
+            Status::Available | Status::LoanedIn { on: _, from: _ } => (
+                "Available",
+                self.theme.extended_palette().success.weak.color,
+            ),
+            Status::LoanedOut { on: _, to: _ } => {
+                ("On Loan", self.theme.extended_palette().warning.weak.color)
+            }
+            Status::Removed { on: _, reason: _ } => {
+                ("Removed", self.theme.extended_palette().danger.weak.color)
+            }
+        };
+        Container::new(
+            Text::new(status_text)
+                .center()
+                .color(self.theme.palette().text.inverse()),
+        )
+        .padding(padding::horizontal(5).vertical(2))
+        .style(move |theme| container::bordered_box(theme).background(colour))
         .into()
     }
 
@@ -284,7 +340,15 @@ impl App {
         .into()
     }
 
-    fn books(&self, books: &[Book], highlighted: Option<&usize>) -> Element<'_, Message> {
+    fn books(
+        &self,
+        books: &[Book],
+        page: usize,
+        highlighted: Option<&usize>,
+    ) -> Element<'_, Message> {
+        let page_start = page * PAGE_SIZE;
+        let page_end = books.len().min(page_start + PAGE_SIZE);
+        let books = books.get(page_start..page_end).expect("Should be correct");
         Container::new(
             Column::new().extend(books.iter().enumerate().map(|(idx, book)| {
                 if let Some(picked) = highlighted
@@ -302,22 +366,6 @@ impl App {
         )
         .style(container::rounded_box)
         .into()
-    }
-
-    fn browse_screen(&self) -> Element<'_, Message> {
-        let results = match &self.browse_state {
-            None => None,
-            Some(BrowseState { books, selected: _ }) if books.is_empty() => Some(
-                Container::new(Text::new("No results to display :(").size(30).center())
-                    .center_x(Fill)
-                    .into(),
-            ),
-            Some(BrowseState {
-                books,
-                selected: highlighted,
-            }) => Some(self.books(books, highlighted.as_ref())),
-        };
-        Container::new(results).padding(100).center_x(Fill).into()
     }
 
     fn home_screen(&self) -> Element<'_, Message> {
@@ -340,6 +388,25 @@ impl App {
         .into()
     }
 
+    fn browse_screen(&self) -> Element<'_, Message> {
+        let results = match &self.browse_state {
+            None => None,
+            Some(BrowseState { books, selected: _ }) if books.is_empty() => None,
+            Some(BrowseState {
+                books,
+                selected: highlighted,
+            }) => Some(self.books(books, 0, highlighted.as_ref())),
+        };
+        let book_count = match &self.browse_state {
+            None => self.book_count(&[]),
+            Some(BrowseState { books, selected: _ }) => self.book_count(books),
+        };
+        Container::new(Column::new().push(book_count).push(results))
+            .padding(100)
+            .center_x(Fill)
+            .into()
+    }
+
     fn search_bar(&self) -> Element<'_, Message> {
         Container::new(
             TextInput::new("What are you searching for?...", &self.search_input)
@@ -352,28 +419,59 @@ impl App {
     }
 
     fn search_result(&self) -> Element<'_, Message> {
-        let results = match &self.search_result {
-            None => None,
-            Some(SearchResult { books, selected: _ }) if books.is_empty() => Some(
-                Container::new(Text::new("No results to display :(").size(30).center())
-                    .center_x(Fill)
-                    .into(),
+        let (results, book_count, page_count) = match &self.search_result {
+            None => (
+                None,
+                self.book_count(&[]),
+                Text::new(format!("Page 1 of 1")),
             ),
-            Some(SearchResult {
-                books,
-                selected: highlighted,
-            }) => Some(self.books(books, highlighted.as_ref())),
+            Some(result) => (
+                if result.books.is_empty() {
+                    None
+                } else {
+                    Some(self.books(&result.books, result.page, result.selected.as_ref()))
+                },
+                self.book_count(&result.books),
+                Text::new(format!(
+                    "Page {} of {}",
+                    result.page + 1,
+                    result.max_page() + 1
+                )),
+            ),
         };
-        Container::new(Column::new().push(self.search_bar()).push(results))
-            .padding(100)
-            .center_x(Fill)
-            .into()
+        let page_buttons = Row::new()
+            .push(iced::widget::space::horizontal())
+            .push(Button::new("Prev").on_press(Message::PageDown))
+            .push(Button::new("Next").on_press(Message::PageUp))
+            .spacing(10);
+        Container::new(
+            Column::new()
+                .push(book_count)
+                .push(self.search_bar())
+                .push(results)
+                .push(iced::widget::space::vertical())
+                .push(
+                    Container::new(page_count)
+                        .align_right(Fill)
+                        .padding(padding::vertical(5)),
+                )
+                .push(page_buttons),
+        )
+        .padding(100)
+        .center_x(Fill)
+        .into()
     }
-}
 
-impl Default for App {
-    fn default() -> Self {
-        Self::new()
+    fn book_count(&self, books: &[Book]) -> Element<'_, Message> {
+        let count = if books.len() > 0 {
+            books.len().to_string()
+        } else {
+            String::from("No")
+        };
+        Container::new(Text::new(format!("{} results found", count)))
+            .padding(5)
+            .align_right(Fill)
+            .into()
     }
 }
 
@@ -385,7 +483,34 @@ fn setup_db(connection: &rusqlite::Connection) {
 
 struct SearchResult {
     books: Vec<Book>,
+    page: usize,
     selected: Option<usize>,
+}
+
+impl SearchResult {
+    fn page_up(&mut self) {
+        if self.page < self.max_page() && self.max_page() > 0 {
+            self.page += 1;
+        }
+    }
+
+    fn page_down(&mut self) {
+        if self.page > 0 {
+            self.page -= 1;
+        }
+    }
+
+    fn select(&mut self, index: usize) {
+        self.selected = Some(index);
+    }
+
+    fn deselect(&mut self) {
+        self.selected = None;
+    }
+
+    fn max_page(&self) -> usize {
+        self.books.len().div_euclid(PAGE_SIZE)
+    }
 }
 
 struct BrowseState {
